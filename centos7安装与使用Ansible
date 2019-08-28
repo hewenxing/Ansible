@@ -1,0 +1,141 @@
+如果没有安装pip, 请先安装对应于你的Python版本的pip
+sudo easy_install pip
+sudo pip install paramiko PyYAML Jinja2 httplib2 six
+
+从源码安装
+git clone git://github.com/ansible/ansible.git --recursive
+cd ./ansible
+source ./hacking/env-setup
+mkdir -p /etc/ansible
+cp ./example/ansible.cfg /etc/ansible
+cp ansible.cfg /etc/ansible/
+
+注意,当更新ansible版本时,不只要更新git的源码树,也要更新git中指向Ansible自身模块的 “submodules” (不是同一种模块)
+git pull --rebase
+git submodule update --init --recursive
+
+yum安装最新发布版本
+yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+sudo yum install ansible -y
+
+通过Apt(Ubuntu)安装最新发布版本
+sudo apt-get install software-properties-common
+sudo apt-add-repository ppa:ansible/ansible
+sudo apt-get update
+sudo apt-get install ansible
+
+通过 Pip 安装最新发布版本
+sudo pip install ansible
+
+生成ssh秘钥文件，并且分发给所有客户端
+ssh-keygen -t rsa
+ssh-copy-id -i ~/.ssh/id_rsa.pub IP
+
+测试
+ansible all -m ping --ask-pass
+
+Inventory文件
+vim /etc/ansible/hosts
+
+Inventory 参数的说明
+ansible_ssh_host
+      将要连接的远程主机名.与你想要设定的主机的别名不同的话,可通过此变量设置.
+
+ansible_ssh_port
+      ssh端口号.如果不是默认的端口号,通过此变量设置.
+
+ansible_ssh_user
+      默认的 ssh 用户名
+
+ansible_ssh_pass
+      ssh 密码(这种方式并不安全,我们强烈建议使用 --ask-pass 或 SSH 密钥)
+
+ansible_sudo_pass
+      sudo 密码(这种方式并不安全,我们强烈建议使用 --ask-sudo-pass)
+
+ansible_sudo_exe (new in version 1.8)
+      sudo 命令路径(适用于1.8及以上版本)
+
+ansible_connection
+      与主机的连接类型.比如:local, ssh 或者 paramiko. Ansible 1.2 以前默认使用 paramiko.1.2 以后默认使用 'smart','smart' 方式会根据是否支持 ControlPersist, 来判断'ssh' 方式是否可行.
+
+ansible_ssh_private_key_file
+      ssh 使用的私钥文件.适用于有多个密钥,而你不想使用 SSH 代理的情况.
+
+ansible_shell_type
+      目标系统的shell类型.默认情况下,命令的执行使用 'sh' 语法,可设置为 'csh' 或 'fish'.
+
+ansible_python_interpreter
+      目标主机的 python 路径.适用于的情况: 系统中有多个 Python, 或者命令路径不是"/usr/bin/python",比如  \*BSD, 或者 /usr/bin/python
+      不是 2.X 版本的 Python.我们不使用 "/usr/bin/env" 机制,因为这要求远程用户的路径设置正确,且要求 "python" 可执行程序名不可为 python以外的名字(实际有可能名为python26).
+
+      与 ansible_python_interpreter 的工作方式相同,可设定如 ruby 或 perl 的路径....
+
+主机与组
+端口号不是默认设置时,可明确的表示为
+badwolf.example.com:5309
+
+假设你有一些静态IP地址,希望设置一些别名,但不是在系统的 host 文件中设置,又或者你是通过隧道在连接,那么可以设置如下
+host1 ansible_ssh_port=5555 ansible_ssh_host=192.168.1.50
+
+主机变量
+[atlanta]
+host1 http_port=80 maxRequestsPerChild=808
+host2 http_port=303 maxRequestsPerChild=909
+
+组的变量
+[atlanta]
+host1
+host2
+
+[atlanta:vars]
+ntp_server=ntp.atlanta.example.com
+proxy=proxy.atlanta.example.com
+
+
+修改配置文件   https://ansible-tran.readthedocs.io/en/latest/docs/intro_configuration.html
+vim /etc/ansible/ansible.cfg
+inventory = /etc/ansible/hosts   #默认库文件位置,脚本,或者存放可通信主机的目录
+
+forks = 10  #在与主机通信时的默认并行进程数 ，默认是5d
+
+host_key_checking = False   #检查主机密钥
+
+log_path = /var/log/ansible.log  #日志文件存放位置
+
+module_name = command ansible   #命令执行默认的模块
+
+private_key_file = /root/.ssh/id_rsa  #私钥文件存储位置（配置免密跳转的时候设置的文件位置）
+
+ansible批量执行命令
+ansible hosts -m command -a "pwd"  #不支持管道
+ansible hosts -m shell -a "echo testa|grep a"  #模块shell支持管道
+ansible hosts -m copy -a "src=/tmp/testdir/test.txt dest=/usr/local/src/"  #模块copy #src指定本地的文件 #dest指定远程主机的目录或者文件
+ansible hosts -m copy -a "src=/tmp/testdir/test.txt dest=/usr/local/src/ backup=yes"  #备份文件
+ansible hosts -m script -a "/usr/local/src/script"  #模块script #把脚本下发到所有的服务器，然后再运行脚本
+
+Playbook 语言示例
+vim playbook.yml
+- hosts: hosts
+  vars:
+    http_port: 80
+    max_clients: 200
+  remote_user: root
+  tasks:
+  - name: ensure apache is at the latest version
+    yum: pkg=httpd state=latest
+  - name: write the apache config file
+    template: src=/srv/httpd.j2 dest=/etc/httpd.conf
+    notify:
+    - restart apache
+  - name: ensure apache is running
+    service: name=httpd state=started
+  handlers:
+    - name: restart apache
+      service: name=httpd state=restarted
+
+执行一个 playbook
+ansible-playbook playbook.yml -f 10
+
+在执行一个 playbook 之前,想看看这个 playbook 的执行会影响到哪些 hosts
+ansible-playbook playbook.yml --list-hosts
